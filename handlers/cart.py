@@ -68,6 +68,36 @@ async def cb_my_cart(cb: types.CallbackQuery):
     await cb.answer()
 
 
+@router.callback_query(F.data == "cart_checkout")
+async def cb_cart_checkout(cb: types.CallbackQuery):
+    if await is_banned(cb.from_user.id):
+        await cb.answer("🚫", show_alert=True)
+        return
+
+    items = await cart_get(cb.from_user.id)
+    if not items:
+        await cb.answer("Корзина пуста", show_alert=True)
+        await _show_cart(cb.from_user.id, edit_msg=cb.message)
+        return
+
+    total = sum(i["price"] for i in items)
+    text = (
+        f"{ae('cart')} <b>Оформление корзины</b>\n\n"
+        f"{ae('money')} <b>Итого:</b> {fmt_price(total)}\n\n"
+        f"<blockquote>Выберите способ оплаты. После оплаты всё содержимое корзины будет оформлено как заказ.</blockquote>"
+    )
+    markup = kb(
+        [btn("CryptoPay (USDT)", "pay_crypto_cart", icon="money")],
+        [btn("Kaspi переводом", "pay_kaspi_cart", icon="phone")],
+        [btn("Назад", "my_cart", icon="back")],
+    )
+    try:
+        await cb.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
+    except Exception:
+        await cb.message.answer(text, parse_mode="HTML", reply_markup=markup)
+    await cb.answer()
+
+
 @router.callback_query(F.data.startswith("cart_add_"))
 async def cb_cart_add(cb: types.CallbackQuery):
     pid = int(cb.data.split("_")[2])
