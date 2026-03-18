@@ -97,8 +97,8 @@ async def cb_support_contacts(cb: types.CallbackQuery):
         await cb.message.edit_text(text, parse_mode="HTML", reply_markup=markup,
                                    disable_web_page_preview=True)
     except Exception:
-        await cb.message.answer(text, parse_mode="HTML", reply_markup=markup,
-                                disable_web_page_preview=True)
+        # Оставляем текущее сообщение, чтобы не создавать новый текст.
+        pass
     await cb.answer()
 
 
@@ -116,8 +116,8 @@ async def cb_complaint_start(cb: types.CallbackQuery, state: FSMContext):
         await cb.message.edit_text(text, parse_mode="HTML",
                                    reply_markup=kb_back("support_back"))
     except Exception:
-        await cb.message.answer(text, parse_mode="HTML",
-                                reply_markup=kb_back("support_back"))
+        # Не создаём новое сообщение, чтобы не засорять чат.
+        pass
     await cb.answer()
 
 
@@ -137,8 +137,8 @@ async def cb_complaint_from_order(cb: types.CallbackQuery, state: FSMContext):
         await cb.message.edit_text(text, parse_mode="HTML",
                                    reply_markup=kb_back(f"myorder_{oid}"))
     except Exception:
-        await cb.message.answer(text, parse_mode="HTML",
-                                reply_markup=kb_back(f"myorder_{oid}"))
+        # Не отправляем новое сообщение, чтобы интерфейс оставался плавным.
+        pass
     await cb.answer()
 
 
