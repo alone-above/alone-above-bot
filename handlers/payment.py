@@ -1,14 +1,19 @@
 """handlers/payment.py — Покупка, промокод, оплата (Crypto / Kaspi)"""
+import json
+import time
+
 from aiogram import Bot, Router, F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 from config import ae, KASPI_PHONE, MANAGER_ID, ADMIN_IDS
 from db import (
+    cart_get, cart_clear,
     get_product, get_user, ensure_user, parse_sizes,
     get_usd_kzt_rate, kzt_to_usd, create_invoice,
-    save_crypto, set_crypto_paid, check_invoice,
-    save_kaspi, set_kaspi_status,
+    save_crypto, get_crypto, set_crypto_paid,
+    save_cart_crypto, get_cart_crypto, set_cart_crypto_paid,
+    save_kaspi, get_kaspi, set_kaspi_status,
     create_order, set_order_status,
     add_purchase, add_bonus, reduce_stock,
     validate_promo, apply_promo_to_price, use_promo,
@@ -158,6 +163,73 @@ async def proc_promo(msg: types.Message, state: FSMContext):
 
 
 # ── CryptoPay ─────────────────────────────────────────
+@router.callback_query(F.data == "pay_crypto_cart")
+async def cb_pay_crypto_cart(cb: types.CallbackQuery, bot: Bot):
+    if await is_banned(cb.from_user.id):
+        await cb.answer("🚫", show_alert=True)
+        return
+
+    items = await cart_get(cb.from_user.id)
+    if not items:
+        await cb.answer("Корзина пуста", show_alert=True)
+        return
+
+    # Проверяем наличие товара
+    for i in items:
+        if i["stock"] <= 0:
+            await cb.answer("Один из товаров в корзине закончился", show_alert=True)
+            return
+
+    total_kzt = sum(i["price"] for i in items)
+    rate      = await get_usd_kzt_rate()
+    total_usd = kzt_to_usd(total_kzt, rate)
+
+    me = await bot.get_me()
+    invoice = await create_invoice(
+        total_usd,
+        "Заказ из корзины",
+        f"cart_{cb.from_user.id}_{int(time.time())}",
+        me.username,
+    )
+    if not invoice:
+        await cb.answer("❌ Ошибка создания счёта. Попробуйте позже.", show_alert=True)
+        return
+
+    # Сохраняем информацию о корзине для проверки оплаты
+    items_data = [
+        {"product_id": i["product_id"], "size": i["size"], "price": i["price"]}
+        for i in items
+    ]
+    await save_cart_crypto(cb.from_user.id, invoice["invoice_id"], total_kzt, total_usd, items_data)
+
+    markup = kb(
+        [btn("Оплатить в CryptoPay", url=invoice["bot_invoice_url"], icon="money")],
+        [btn("Проверить оплату", f"check_crypto_{invoice['invoice_id']}", icon="refresh")],
+        [btn("Назад", "my_cart", icon="back")],
+    )
+    text = (
+        f"{ae('money')} <b>Оплата через CryptoPay</b>\n\n"
+        f"<b>Всего товаров</b>: {len(items)}\n"
+        f"💵 <b>Сумма:</b> {total_usd} USDT (~{fmt_price(total_kzt)})\n\n"
+        f"<blockquote>Нажмите «Оплатить», завершите платёж, "
+        f"затем нажмите «Проверить оплату».</blockquote>"
+    )
+    try:
+        await cb.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
+    except Exception:
+        await cb.message.answer(text, parse_mode="HTML", reply_markup=markup)
+    await cb.answer()
+
+
+@router.callback_query(F.data == "pay_kaspi_cart")
+async def cb_pay_kaspi_cart(cb: types.CallbackQuery):
+    # Пока поддерживается только CryptoPay для оплаты всей корзины сразу.
+    await cb.answer(
+        "Платёж всей корзины доступен только через CryptoPay. Выберите CryptoPay.",
+        show_alert=True,
+    )
+
+
 @router.callback_query(F.data.startswith("pay_crypto_"))
 async def cb_pay_crypto(cb: types.CallbackQuery, bot: Bot):
     if await is_banned(cb.from_user.id):
