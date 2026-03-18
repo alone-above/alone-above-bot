@@ -10,7 +10,19 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ── Токены и ID ────────────────────────────────────────
-BOT_TOKEN        = os.getenv("BOT_TOKEN")
+# The bot token is required to start the bot. We allow a couple of common env var names
+# (BOT_TOKEN is preferred, but some platforms use TELEGRAM_BOT_TOKEN).
+BOT_TOKEN = (
+    os.getenv("BOT_TOKEN")
+    or os.getenv("TELEGRAM_BOT_TOKEN")
+    or os.getenv("TG_BOT_TOKEN")
+)
+if not BOT_TOKEN:
+    raise RuntimeError(
+        "Missing required env var: BOT_TOKEN (or TELEGRAM_BOT_TOKEN / TG_BOT_TOKEN). "
+        "Set it in your environment or in a .env file."
+    )
+
 CRYPTOBOT_TOKEN  = os.getenv("CRYPTOBOT_TOKEN")
 ADMIN_IDS        = list(map(int, os.getenv("ADMIN_IDS", "0").split(",")))
 SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "@support")
