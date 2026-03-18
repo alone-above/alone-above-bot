@@ -73,13 +73,32 @@ def btn(text: str, callback_data: str = None, url: str = None,
     return InlineKeyboardButton(**kwargs)
 
 
-def kb(*rows) -> InlineKeyboardMarkup:
-    """Собрать InlineKeyboardMarkup из строк кнопок."""
-    return InlineKeyboardMarkup(inline_keyboard=list(rows))
+def kb(*rows, include_main: bool = True) -> InlineKeyboardMarkup:
+    """Собрать InlineKeyboardMarkup из строк кнопок.
+
+    По умолчанию добавляем кнопку «Главное меню» внизу, чтобы пользователь мог
+    быстро вернуться на главный экран из любой вкладки.
+
+    Если клавиатура уже содержит кнопку с callback_data='main', то не добавляем
+    дублирующую.
+    """
+    markup = InlineKeyboardMarkup(inline_keyboard=list(rows))
+
+    if include_main:
+        has_main = any(
+            (btn.callback_data == "main")
+            for row in markup.inline_keyboard
+            for btn in row
+        )
+        if not has_main:
+            markup.inline_keyboard.append([btn("Главное меню", "main", icon="home")])
+
+    return markup
 
 
 # ── Главное меню ──────────────────────────────────────
 def kb_main() -> InlineKeyboardMarkup:
+    # Не добавляем кнопку «Главное меню» в самой главной клавиатуре.
     return kb(
         [btn("Каталог",    "shop",         icon="shop"),
          btn("Профиль",    "profile_view", icon="profile")],
@@ -87,6 +106,7 @@ def kb_main() -> InlineKeyboardMarkup:
          btn("Избранное",  "my_wishlist",  icon="heart")],
         [btn("О магазине", "about",        icon="about"),
          btn("Поддержка",  "support",      icon="support")],
+        include_main=False,
     )
 
 
@@ -143,7 +163,6 @@ def kb_profile(cart_cnt: int = 0, wish_cnt: int = 0) -> InlineKeyboardMarkup:
          btn("Адрес",     "profile_address",   icon="pin")],
         [btn("Мои заказы",        "my_orders",        icon="orders")],
         [btn("Партнёрская программа", "partner_program", icon="partner")],
-        [btn("Главное меню",       "main",             icon="home")],
     )
 
 
