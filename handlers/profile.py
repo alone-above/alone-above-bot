@@ -96,10 +96,6 @@ async def cb_profile_phone(cb: types.CallbackQuery):
 
 @router.callback_query(F.data == "phone_via_tg")
 async def cb_phone_via_tg(cb: types.CallbackQuery, bot: Bot):
-    try:
-        await cb.message.delete()
-    except Exception:
-        pass
     reply_kb = ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="📲 Отправить мой номер", request_contact=True)]],
         resize_keyboard=True,
