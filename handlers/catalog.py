@@ -51,8 +51,8 @@ async def cb_shop(cb: types.CallbackQuery, bot: Bot):
         await cb.message.edit_text(header, parse_mode="HTML",
                                    reply_markup=kb(*rows))
     except Exception:
-        await bot.send_message(cb.from_user.id, header, parse_mode="HTML",
-                               reply_markup=kb(*rows))
+        # Не отправляем новое сообщение, чтобы интерфейс был плавным.
+        pass
     await cb.answer()
 
 
@@ -76,8 +76,8 @@ async def cb_cat(cb: types.CallbackQuery, bot: Bot):
         await cb.message.edit_text(text, parse_mode="HTML",
                                    reply_markup=kb(*rows))
     except Exception:
-        await bot.send_message(cb.from_user.id, text, parse_mode="HTML",
-                               reply_markup=kb(*rows))
+        # Не отправляем новое сообщение, чтобы не создавать лишних сообщений.
+        pass
     await cb.answer()
 
 
@@ -117,32 +117,23 @@ async def cb_prod(cb: types.CallbackQuery, bot: Bot):
     markup = kb_product(pid, in_wish, len(gallery))
     await log_event("view_product", cb.from_user.id, str(pid))
 
-    # Показываем с медиа если есть обложка
+    # Если текущее сообщение содержит медиа, обновляем подпись.
+    # В противном случае редактируем текст. Не создаём новых сообщений.
     if p.get("card_file_id"):
         try:
-            await cb.message.delete()
-        except Exception:
-            pass
-        try:
-            if p["card_media_type"] == "photo":
-                await bot.send_photo(cb.from_user.id, p["card_file_id"],
-                                     caption=text, parse_mode="HTML", reply_markup=markup)
-            elif p["card_media_type"] == "video":
-                await bot.send_video(cb.from_user.id, p["card_file_id"],
-                                     caption=text, parse_mode="HTML", reply_markup=markup)
-            else:
-                await bot.send_message(cb.from_user.id, text, parse_mode="HTML",
-                                       reply_markup=markup)
-            await cb.answer()
-            return
+            if (cb.message.photo or cb.message.video or cb.message.animation or
+                    cb.message.document):
+                await cb.message.edit_caption(caption=text, parse_mode="HTML", reply_markup=markup)
+                await cb.answer()
+                return
         except Exception:
             pass
 
     try:
         await cb.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
     except Exception:
-        await bot.send_message(cb.from_user.id, text, parse_mode="HTML",
-                               reply_markup=markup)
+        # Ничего не делаем, чтобы не отправлять новое сообщение.
+        pass
     await cb.answer()
 
 
@@ -180,24 +171,16 @@ async def cb_gallery(cb: types.CallbackQuery, bot: Bot):
     markup = kb(nav, [btn("К товару", f"prod_{pid}", icon="back")])
     caption = f"🖼 <b>Галерея</b>  {idx+1}/{total}  —  {p['name']}"
 
+    # Попробуем просто обновить подпись/текст, не создавая новое сообщение.
     try:
-        await cb.message.delete()
-    except Exception:
-        pass
-    try:
-        if mt == "photo":
-            await bot.send_photo(cb.from_user.id, fid, caption=caption,
-                                 parse_mode="HTML", reply_markup=markup)
-        elif mt == "video":
-            await bot.send_video(cb.from_user.id, fid, caption=caption,
-                                 parse_mode="HTML", reply_markup=markup)
+        if (cb.message.photo or cb.message.video or cb.message.animation or
+                cb.message.document):
+            await cb.message.edit_caption(caption=caption, parse_mode="HTML", reply_markup=markup)
         else:
-            await bot.send_document(cb.from_user.id, fid, caption=caption,
-                                    parse_mode="HTML", reply_markup=markup)
+            await cb.message.edit_text(caption, parse_mode="HTML", reply_markup=markup)
     except Exception:
-        await bot.send_message(cb.from_user.id,
-                               "⚠️ Не удалось загрузить медиа галереи.",
-                               reply_markup=markup)
+        # Если не удалось редактировать, оставляем текущее сообщение без изменений.
+        pass
     await cb.answer()
 
 
