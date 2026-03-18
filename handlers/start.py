@@ -116,11 +116,8 @@ async def cb_main(cb: types.CallbackQuery, state: FSMContext, bot: Bot):
     try:
         await cb.message.edit_text(text, parse_mode="HTML", reply_markup=kb_main())
     except Exception:
-        try:
-            await cb.message.delete()
-        except Exception:
-            pass
-        await bot.send_message(cb.from_user.id, text, parse_mode="HTML", reply_markup=kb_main())
+        # Не отправляем новое сообщение, чтобы не накапливать сообщения в чате.
+        pass
     await cb.answer()
 
 
@@ -137,9 +134,8 @@ async def cb_adm_panel(cb: types.CallbackQuery, state: FSMContext, bot: Bot):
             parse_mode="HTML", reply_markup=kb_admin(),
         )
     except Exception:
-        await send_media(bot, cb.from_user.id,
-                         f"{ae('crown')} <b>Панель управления</b>",
-                         "admin_panel", kb_admin())
+        # Не создаём новое сообщение, чтобы не засорять чат.
+        pass
     await cb.answer()
 
 
@@ -163,14 +159,14 @@ async def cb_agree_terms(cb: types.CallbackQuery, bot: Bot):
     await ensure_user(cb.from_user)
     await set_agreed_terms(cb.from_user.id)
     await set_cmds(bot, cb.from_user.id)
-    try:
-        await cb.message.delete()
-    except Exception:
-        pass
     text = (
         f"{ae('shop')} <b>{SHOP_NAME}</b>\n\n"
         f"<blockquote>{ae('ok')} Спасибо! Вы приняли условия.\n\n"
         f"{ae('down')} Выберите раздел:</blockquote>"
     )
-    await send_media(bot, cb.from_user.id, text, "main_menu", kb_main())
+    try:
+        await cb.message.edit_text(text, parse_mode="HTML", reply_markup=kb_main())
+    except Exception:
+        # Не создаём новое сообщение, оставляем текущее, чтобы не засорять чат.
+        pass
     await cb.answer("✅ Добро пожаловать!")
