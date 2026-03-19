@@ -1,15 +1,21 @@
 """handlers/cart.py — Корзина и избранное"""
 from aiogram import Bot, Router, F, types
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 
 from config import ae
 from db import (
     cart_add, cart_remove, cart_get, cart_clear, cart_has,
     wish_add, wish_remove, wish_get, wish_has, wish_count,
     get_product, parse_sizes, is_banned,
+    validate_promo, apply_promo_to_price,
 )
 from keyboards import kb_main, kb_back, btn, kb
 from utils import fmt_price
+
+
+class CartPromoSt(StatesGroup):
+    entering = State()
 
 router = Router()
 
@@ -54,7 +60,10 @@ async def _show_cart(uid: int, edit_msg=None, send_fn=None):
             await edit_msg.edit_text(text, parse_mode="HTML", reply_markup=markup)
             return
         except Exception:
-            pass
+            try:
+                await edit_msg.delete()
+            except Exception:
+                pass
     if send_fn:
         await send_fn(text, parse_mode="HTML", reply_markup=markup)
 
@@ -69,7 +78,7 @@ async def cb_my_cart(cb: types.CallbackQuery):
 
 
 @router.callback_query(F.data == "cart_checkout")
-async def cb_cart_checkout(cb: types.CallbackQuery):
+async def cb_cart_checkout(cb: types.CallbackQuery, state: FSMContext):
     if await is_banned(cb.from_user.id):
         await cb.answer("🚫", show_alert=True)
         return
@@ -80,53 +89,106 @@ async def cb_cart_checkout(cb: types.CallbackQuery):
         await _show_cart(cb.from_user.id, edit_msg=cb.message)
         return
 
+    data = await state.get_data()
+    promo_code = data.get("cart_promo_code", "")
+    promo_info = data.get("cart_promo_info", "")
+
     total = sum(i["price"] for i in items)
+    discount = 0
+    error_line = ""
+    if promo_code:
+        promo, err = await validate_promo(
+            promo_code, cb.from_user.id,
+            allowed_types=["cart_discount_percent", "cart_discount_fixed"],
+        )
+        if promo:
+            total, discount, promo_info = apply_promo_to_price(total, promo)
+            await state.update_data(
+                cart_promo_code=promo_code,
+                cart_promo_info=promo_info,
+                cart_promo_discount=discount,
+            )
+        else:
+            promo_code = ""
+            promo_info = ""
+            await state.update_data(cart_promo_code="", cart_promo_info="", cart_promo_discount=0)
+            error_line = f"\n⚠️ {err}\n"
+
     text = (
         f"{ae('cart')} <b>Оформление корзины</b>\n\n"
-        f"{ae('money')} <b>Итого:</b> {fmt_price(total)}\n\n"
-        f"<blockquote>Выберите способ оплаты. После оплаты всё содержимое корзины будет оформлено как заказ.</blockquote>"
+        f"{ae('money')} <b>Итого:</b> {fmt_price(total)}\n"
+        + (f"\n{promo_info}\n" if promo_info else "")
+        + (f"\n{ae('promo')} <b>Промокод:</b> <code>{promo_code}</code>\n" if promo_code else "")
+        + error_line
+        + "\n<blockquote>Выберите способ оплаты. После оплаты всё содержимое корзины будет оформлено как заказ.</blockquote>"
     )
-    markup = kb(
+
+    rows = [
         [btn("CryptoPay (USDT)", "pay_crypto_cart", icon="money")],
         [btn("Kaspi переводом", "pay_kaspi_cart", icon="phone")],
+        [btn("Применить промокод", "apply_cart_promo", icon="promo")],
         [btn("Назад", "my_cart", icon="back")],
-    )
+    ]
+    markup = kb(*rows)
+
     try:
         await cb.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
     except Exception:
+        try:
+            await cb.message.delete()
+        except Exception:
+            pass
         await cb.message.answer(text, parse_mode="HTML", reply_markup=markup)
     await cb.answer()
 
 
-@router.callback_query(F.data.startswith("cart_add_"))
-async def cb_cart_add(cb: types.CallbackQuery):
-    pid = int(cb.data.split("_")[2])
-    p   = await get_product(pid)
-    if not p or p["stock"] <= 0:
-        await cb.answer("Товар недоступен", show_alert=True)
+@router.callback_query(F.data == "apply_cart_promo")
+async def cb_apply_cart_promo(cb: types.CallbackQuery, state: FSMContext):
+    if await is_banned(cb.from_user.id):
+        await cb.answer("🚫", show_alert=True)
         return
-    sizes = parse_sizes(p)
-    if sizes:
-        rows = [[btn(s, f"cart_addsize_{pid}_{s}")] for s in sizes]
-        rows.append([btn("Назад", f"prod_{pid}", icon="back")])
-        try:
-            await cb.message.edit_text(
-                f"{ae('size')} <b>Выберите размер для корзины</b>",
-                parse_mode="HTML", reply_markup=kb(*rows),
-            )
-        except Exception:
-            await cb.message.answer(
-                f"{ae('size')} <b>Выберите размер для корзины</b>",
-                parse_mode="HTML", reply_markup=kb(*rows),
-            )
-    else:
-        already = await cart_has(cb.from_user.id, pid, "ONE_SIZE")
-        if already:
-            await cb.answer("Уже в корзине", show_alert=True)
-            return
-        await cart_add(cb.from_user.id, pid, "ONE_SIZE")
-        await cb.answer("🛒 Добавлено в корзину!")
+    await state.set_state(CartPromoSt.entering)
+    try:
+        await cb.message.edit_text(
+            f"{ae('promo')} <b>Введите промокод</b>\n\n"
+            f"<blockquote>Введите код купона:</blockquote>",
+            parse_mode="HTML",
+            reply_markup=kb_back("cart_checkout"),
+        )
+    except Exception:
+        await cb.message.answer(
+            f"{ae('promo')} <b>Введите промокод</b>",
+            parse_mode="HTML",
+            reply_markup=kb_back("cart_checkout"),
+        )
     await cb.answer()
+
+
+@router.message(CartPromoSt.entering)
+async def proc_cart_promo(msg: types.Message, state: FSMContext):
+    code = msg.text.strip().upper()
+    if code.lower() in ("удалить", "delete", "clear"):
+        await state.update_data(cart_promo_code="", cart_promo_info="", cart_promo_discount=0)
+        await state.clear()
+        await msg.answer("✅ Промокод удалён.", reply_markup=kb_back("cart_checkout"))
+        return
+
+    promo, err = await validate_promo(code, msg.from_user.id, allowed_types=[
+        "cart_discount_percent", "cart_discount_fixed",
+    ])
+    if not promo:
+        await msg.answer(f"⚠️ {err}", reply_markup=kb_back("cart_checkout"))
+        return
+
+    # Сохраняем активный промокод для корзины.
+    await state.update_data(cart_promo_code=code)
+    await state.set_state(CartPromoSt.entering)
+    await msg.answer(
+        f"✅ Промокод <code>{code}</code> принят!\n\n"
+        "Вернитесь к оформлению корзины.",
+        parse_mode="HTML",
+        reply_markup=kb_back("cart_checkout"),
+    )
 
 
 @router.callback_query(F.data.startswith("cart_addsize_"))
