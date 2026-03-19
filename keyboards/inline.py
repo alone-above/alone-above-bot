@@ -190,7 +190,11 @@ def kb_support(support_username: str) -> InlineKeyboardMarkup:
 # ── Товарная карточка ─────────────────────────────────
 def kb_product(pid: int, in_wish: bool, gallery_len: int = 0) -> InlineKeyboardMarkup:
     rows = []
-    # Убрали кнопки «Купить» и «В корзину», оставляем только полезные навигационные кнопки.
+    # Показываем кнопки покупки/добавления в корзину и избранного.
+    # Раньше убирали кнопку «Купить» и «В корзину» — теперь возвращаем, чтобы UX был понятным.
+    rows.append([btn("Купить", f"buy_{pid}", icon="money"),
+                 btn("В корзину", f"cart_add_{pid}", icon="cart")])
+
     wish_icon = "heart" if not in_wish else "no"
     wish_text = "В избранное" if not in_wish else "Убрать из избранного"
     rows.append([btn(wish_text,   f"wish_toggle_{pid}", icon=wish_icon)])
