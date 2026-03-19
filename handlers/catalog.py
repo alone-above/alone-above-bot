@@ -47,12 +47,12 @@ async def cb_shop(cb: types.CallbackQuery, bot: Bot):
     rows = [[btn(c["name"], f"cat_{c['id']}", icon="folder")] for c in cats]
     rows.append([btn("Дропы", "drops_menu", icon="fire")])
     rows.append([btn("Назад", "main", icon="back")])
+    # Удаляем старое сообщение и отправляем заново, чтобы корректно показать медиа.
     try:
-        await cb.message.edit_text(header, parse_mode="HTML",
-                                   reply_markup=kb(*rows))
+        await cb.message.delete()
     except Exception:
-        # При ошибке редактирования отправляем новое сообщение, чтобы кнопки были видны.
-        await send_media(bot, cb.from_user.id, header, "catalog_menu", markup=kb(*rows))
+        pass
+    await send_media(bot, cb.from_user.id, header, "catalog_menu", markup=kb(*rows))
     await cb.answer()
 
 
@@ -117,23 +117,17 @@ async def cb_prod(cb: types.CallbackQuery, bot: Bot):
     markup = kb_product(pid, in_wish, len(gallery))
     await log_event("view_product", cb.from_user.id, str(pid))
 
-    # Если карточка товара содержит медиа, показываем его.
-    # Telegram не позволяет преобразовать текстовое сообщение в медиа-уведомление,
-    # поэтому отправляем новое сообщение (и пытаемся удалить старое) при необходимости.
+    # Если карточка товара содержит медиа, удаляем старое сообщение и отправляем новое.
+    # Это нужно, потому что Telegram не поддерживает преобразование текста в медиа при редактировании.
     if p.get("card_file_id"):
         fid = p["card_file_id"]
         mtype = p.get("card_media_type", "photo")
+
         try:
-            # Если текущее сообщение уже содержит медиа, просто обновляем подпись.
-            if (cb.message.photo or cb.message.video or cb.message.animation or
-                    cb.message.document):
-                await cb.message.edit_caption(caption=text, parse_mode="HTML", reply_markup=markup)
-                await cb.answer()
-                return
+            await cb.message.delete()
         except Exception:
             pass
 
-        # Попробуем отправить новое сообщение с медиа (чтобы пользователь видел картинку/видео).
         try:
             if mtype == "photo":
                 await bot.send_photo(cb.from_user.id, fid, caption=text,
@@ -150,11 +144,6 @@ async def cb_prod(cb: types.CallbackQuery, bot: Bot):
             else:
                 raise ValueError(f"Unsupported media type: {mtype}")
 
-            # Старая текстовая карточка уже не нужна — попробуем удалить её.
-            try:
-                await cb.message.delete()
-            except Exception:
-                pass
             await cb.answer()
             return
         except Exception:
