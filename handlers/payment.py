@@ -1,6 +1,7 @@
 """handlers/payment.py — Покупка, промокод, оплата (Crypto / Kaspi)"""
 import json
 import time
+from datetime import datetime
 
 from aiogram import Bot, Router, F, types
 from aiogram.fsm.context import FSMContext
@@ -17,8 +18,33 @@ from db import (
     add_purchase, add_bonus, reduce_stock,
     validate_promo, apply_promo_to_price, use_promo,
     is_banned, log_event,
+    db_run, db_one,
 )
-from db.payments import save_cart_crypto, get_cart_crypto, set_cart_crypto_paid
+
+# Compatibility: some deployments may ship an older `db` package that does not export
+# `save_cart_crypto`, `get_cart_crypto`, `set_cart_crypto_paid`.
+try:
+    from db.payments import save_cart_crypto, get_cart_crypto, set_cart_crypto_paid
+except (ImportError, ModuleNotFoundError):
+    async def save_cart_crypto(uid, inv_id, amount_kzt, amount_usd, items: list):
+        try:
+            await db_run(
+                """INSERT INTO cart_crypto_payments
+                   (user_id,invoice_id,amount_kzt,amount_usd,items,created_at)
+                   VALUES($1,$2,$3,$4,$5,$6)""",
+                (uid, inv_id, amount_kzt, amount_usd, json.dumps(items), datetime.now().isoformat()),
+            )
+        except Exception:
+            pass
+
+    async def get_cart_crypto(inv_id: str):
+        return await db_one("SELECT * FROM cart_crypto_payments WHERE invoice_id=$1", (inv_id,))
+
+    async def set_cart_crypto_paid(inv_id: str):
+        await db_run(
+            "UPDATE cart_crypto_payments SET status='paid' WHERE invoice_id=$1", (inv_id,)
+        )
+
 from keyboards import kb_main, kb_back, btn, kb, kb_payment
 from utils import fmt_price
 
