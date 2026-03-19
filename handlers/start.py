@@ -17,7 +17,20 @@ router = Router()
 
 
 # ── Вспомогательная отправка с медиа ─────────────────
-async def send_media(bot: Bot, chat_id: int, text: str, key: str, markup=None):
+async def send_media(bot: Bot, chat_id: int, text: str, key: str, markup=None,
+                     old_message: types.Message | None = None):
+    """Send a message with optional media.
+
+    If old_message is provided, delete it before sending the new message.
+    This avoids updating (editing) messages that contain media, which often fails
+    and causes Telegram to ignore the new media.
+    """
+    if old_message is not None:
+        try:
+            await old_message.delete()
+        except Exception:
+            pass
+
     from db import get_media
     m = await get_media(key)
     if m:
@@ -113,12 +126,8 @@ async def cb_main(cb: types.CallbackQuery, state: FSMContext, bot: Bot):
         f"{ae('sparkle')} <b>{SHOP_NAME}</b>\n\n"
         f"<blockquote>{ae('down')} Выберите нужный раздел:</blockquote>"
     )
-    try:
-        await cb.message.edit_text(text, parse_mode="HTML", reply_markup=kb_main())
-    except Exception:
-        # Если редактирование не прошло (например, сообщение было удалено),
-        # отправляем новое сообщение, чтобы у пользователя оставались кнопки.
-        await bot.send_message(cb.from_user.id, text, parse_mode="HTML", reply_markup=kb_main())
+    # Удаляем предыдущее сообщение и отправляем заново, чтобы корректно показать медиа.
+    await send_media(bot, cb.from_user.id, text, "main_menu", markup=kb_main(), old_message=cb.message)
     await cb.answer()
 
 
