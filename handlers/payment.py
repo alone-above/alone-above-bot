@@ -12,13 +12,13 @@ from db import (
     get_product, get_user, ensure_user, parse_sizes,
     get_usd_kzt_rate, kzt_to_usd, create_invoice,
     save_crypto, get_crypto, set_crypto_paid,
-    save_cart_crypto, get_cart_crypto, set_cart_crypto_paid,
     save_kaspi, get_kaspi, set_kaspi_status,
     create_order, set_order_status,
     add_purchase, add_bonus, reduce_stock,
     validate_promo, apply_promo_to_price, use_promo,
     is_banned, log_event,
 )
+from db.payments import save_cart_crypto, get_cart_crypto, set_cart_crypto_paid
 from keyboards import kb_main, kb_back, btn, kb, kb_payment
 from utils import fmt_price
 
