@@ -9,6 +9,7 @@ from db import (
     wish_has, get_avg_rating, get_review_count,
     get_bot_msg, is_banned, log_event, db_one,
 )
+from handlers.start import send_media
 from keyboards import kb_back, btn, kb
 from keyboards.inline import kb_product
 from utils import fmt_price
@@ -30,8 +31,7 @@ async def show_catalog(bot: Bot, chat_id: int):
     rows = [[btn(c["name"], f"cat_{c['id']}", icon="folder")] for c in cats]
     rows.append([btn("Дропы", "drops_menu", icon="fire")])
     rows.append([btn("Назад", "main", icon="back")])
-    await bot.send_message(chat_id, header, parse_mode="HTML",
-                           reply_markup=kb(*rows))
+    await send_media(bot, chat_id, header, "catalog_menu", markup=kb(*rows))
 
 
 @router.callback_query(F.data == "shop")
@@ -52,8 +52,7 @@ async def cb_shop(cb: types.CallbackQuery, bot: Bot):
                                    reply_markup=kb(*rows))
     except Exception:
         # При ошибке редактирования отправляем новое сообщение, чтобы кнопки были видны.
-        await bot.send_message(cb.from_user.id, header, parse_mode="HTML",
-                               reply_markup=kb(*rows))
+        await send_media(bot, cb.from_user.id, header, "catalog_menu", markup=kb(*rows))
     await cb.answer()
 
 
@@ -118,16 +117,48 @@ async def cb_prod(cb: types.CallbackQuery, bot: Bot):
     markup = kb_product(pid, in_wish, len(gallery))
     await log_event("view_product", cb.from_user.id, str(pid))
 
-    # Если текущее сообщение содержит медиа, обновляем подпись.
-    # В противном случае редактируем текст. Не создаём новых сообщений.
+    # Если карточка товара содержит медиа, показываем его.
+    # Telegram не позволяет преобразовать текстовое сообщение в медиа-уведомление,
+    # поэтому отправляем новое сообщение (и пытаемся удалить старое) при необходимости.
     if p.get("card_file_id"):
+        fid = p["card_file_id"]
+        mtype = p.get("card_media_type", "photo")
         try:
+            # Если текущее сообщение уже содержит медиа, просто обновляем подпись.
             if (cb.message.photo or cb.message.video or cb.message.animation or
                     cb.message.document):
                 await cb.message.edit_caption(caption=text, parse_mode="HTML", reply_markup=markup)
                 await cb.answer()
                 return
         except Exception:
+            pass
+
+        # Попробуем отправить новое сообщение с медиа (чтобы пользователь видел картинку/видео).
+        try:
+            if mtype == "photo":
+                await bot.send_photo(cb.from_user.id, fid, caption=text,
+                                     parse_mode="HTML", reply_markup=markup)
+            elif mtype == "video":
+                await bot.send_video(cb.from_user.id, fid, caption=text,
+                                     parse_mode="HTML", reply_markup=markup)
+            elif mtype == "animation":
+                await bot.send_animation(cb.from_user.id, fid, caption=text,
+                                         parse_mode="HTML", reply_markup=markup)
+            elif mtype == "document":
+                await bot.send_document(cb.from_user.id, fid, caption=text,
+                                        parse_mode="HTML", reply_markup=markup)
+            else:
+                raise ValueError(f"Unsupported media type: {mtype}")
+
+            # Старая текстовая карточка уже не нужна — попробуем удалить её.
+            try:
+                await cb.message.delete()
+            except Exception:
+                pass
+            await cb.answer()
+            return
+        except Exception:
+            # Если не получилось отправить медиа, продолжим обычным текстом.
             pass
 
     try:
