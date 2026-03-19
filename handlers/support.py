@@ -28,20 +28,23 @@ async def show_support(bot: Bot, chat_id: int, edit_msg: types.Message | None = 
     m = await get_media("support_menu")
     if m:
         mt = m["media_type"]
+        if edit_msg:
+            try:
+                await edit_msg.delete()
+            except Exception:
+                pass
         try:
             if mt == "photo":
-                if edit_msg:
-                    await edit_msg.edit_caption(caption=text, parse_mode="HTML", reply_markup=markup)
-                    return
                 await bot.send_photo(chat_id, m["file_id"], caption=text,
                                      parse_mode="HTML", reply_markup=markup)
                 return
             elif mt == "video":
-                if edit_msg:
-                    await edit_msg.edit_caption(caption=text, parse_mode="HTML", reply_markup=markup)
-                    return
                 await bot.send_video(chat_id, m["file_id"], caption=text,
                                      parse_mode="HTML", reply_markup=markup)
+                return
+            elif mt == "animation":
+                await bot.send_animation(chat_id, m["file_id"], caption=text,
+                                         parse_mode="HTML", reply_markup=markup)
                 return
         except Exception:
             await db_run("DELETE FROM media_settings WHERE key='support_menu'")
