@@ -98,8 +98,3 @@ async def get_support_info():
         "username": SUPPORT_USERNAME,
         "phone": KASPI_PHONE
     }
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)</content>
-<parameter name="filePath">d:\download from brave\alone-above-bot-main\alone-above-bot-main\api.py
