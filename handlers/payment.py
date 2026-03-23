@@ -742,3 +742,73 @@ async def cb_kaspi_reject(cb: types.CallbackQuery, bot: Bot):
         )
     except Exception:
         pass
+
+
+# WebApp order confirmation/rejection handlers
+@router.callback_query(F.data.startswith("weborder_confirm_"))
+async def cb_weborder_confirm(cb: types.CallbackQuery, bot: Bot):
+    if cb.from_user.id != MANAGER_ID and cb.from_user.id not in ADMIN_IDS:
+        await cb.answer("Нет доступа", show_alert=True)
+        return
+    
+    order_id = int(cb.data.split("_")[-1])
+    
+    try:
+        order = await __import__("db.orders", fromlist=["get_order"]).get_order(order_id)
+        if not order:
+            await cb.answer("Заказ не найден", show_alert=True)
+            return
+        
+        # Update order status
+        await set_order_status(order_id, "processing", cb.from_user.id)
+        
+        # Add purchase to user profile (if needed)
+        try:
+            user_id = order.get("user_id")
+            if user_id:
+                await __import__("db.users", fromlist=["add_purchase"]).add_purchase(user_id, order.get("amount", 0))
+                await __import__("db.users", fromlist=["add_bonus"]).add_bonus(user_id, int(order.get("amount", 0) * 0.05))
+        except Exception:
+            pass
+        
+        await cb.answer("✅ Подтверждено")
+        try:
+            await cb.message.edit_text(
+                cb.message.html_text + "\n\n✅ <b>ПОДТВЕРЖДЕНО</b>",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+            
+    except Exception as e:
+        await cb.answer(f"Ошибка: {str(e)[:50]}", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("weborder_reject_"))
+async def cb_weborder_reject(cb: types.CallbackQuery, bot: Bot):
+    if cb.from_user.id != MANAGER_ID and cb.from_user.id not in ADMIN_IDS:
+        await cb.answer("Нет доступа", show_alert=True)
+        return
+    
+    order_id = int(cb.data.split("_")[-1])
+    
+    try:
+        order = await __import__("db.orders", fromlist=["get_order"]).get_order(order_id)
+        if not order:
+            await cb.answer("Заказ не найден", show_alert=True)
+            return
+        
+        # Update order status to rejected
+        await set_order_status(order_id, "rejected", cb.from_user.id)
+        
+        await cb.answer("❌ Отклонено")
+        try:
+            await cb.message.edit_text(
+                cb.message.html_text + "\n\n❌ <b>ОТКЛОНЕНО</b>",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+            
+    except Exception as e:
+        await cb.answer(f"Ошибка: {str(e)[:50]}", show_alert=True)
