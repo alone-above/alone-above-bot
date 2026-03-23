@@ -1361,10 +1361,12 @@ async function placeOrder() {
 
   console.log('%c📦 placeOrder() - Отправляем заказ на сервер', 'color: #b8f548; font-weight: bold');
   console.log('%c📋 Товары:', 'color: #44dd88; font-weight: bold', state.cart);
+  console.log('%c👤 User ID:', 'color: #44dd88; font-weight: bold', currentUser?.id);
   
   const result = await apiCall('/order/create', 'POST', {
     items: state.cart.map(c => ({ product_id: c.product_id, size: c.size })),
     phone, address, promo_code: promo, method: state.payMethod,
+    user_id: currentUser?.id || 999999,  // Отправляем реальный ID пользователя из Telegram
   });
 
   btn.disabled = false;
