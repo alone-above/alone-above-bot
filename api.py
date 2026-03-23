@@ -20,6 +20,64 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Health check
+@app.get("/health")
+async def health():
+    return {"status": "API is running", "message": "✅ API работает!"}
+
+# Debug info
+@app.get("/debug")
+async def debug_info():
+    try:
+        cats = await get_categories()
+        cat_count = len(cats) if cats else 0
+        cat_names = [c.get('name', 'N/A') for c in (cats or [])][:5]
+        
+        return {
+            "api_status": "✅ Работает",
+            "categories_count": cat_count,
+            "categories_sample": cat_names,
+            "message": "API и БД инициализированы"
+        }
+    except Exception as e:
+        return {
+            "api_status": "❌ Ошибка",
+            "error": str(e),
+            "message": "Проблема с подключением к БД"
+        }
+
+# Тестовые эндпоинты (без параметров)
+@app.get("/test/categories")
+async def test_categories():
+    """Тестовый эндпоинт для проверки категорий"""
+    try:
+        cats = await get_categories()
+        return {
+            "success": True,
+            "count": len(cats) if cats else 0,
+            "data": cats[:5] if cats else []
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/test/products")
+async def test_products():
+    """Тестовый эндпоинт для проверки товаров"""
+    try:
+        if not await get_categories():
+            return {"success": False, "error": "Нет категорий"}
+        
+        cat = (await get_categories())[0]
+        prods = await get_products(cat['id'])
+        return {
+            "success": True,
+            "category": cat['name'],
+            "count": len(prods) if prods else 0,
+            "data": prods[:3] if prods else []
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 # Категории
 @app.get("/categories")
 async def get_all_categories():
