@@ -746,7 +746,20 @@ function initTelegram() {
     const u = tg.initDataUnsafe?.user;
     if (u) {
       currentUser = u;
+      console.log('%c✅ Telegram User:', 'color: #44dd88; font-weight: bold', currentUser);
     }
+  }
+  
+  // Fallback для локального тестирования (если не в Telegram)
+  if (!currentUser) {
+    const testUserId = localStorage.getItem('testUserId') || '999999';
+    currentUser = {
+      id: parseInt(testUserId),
+      first_name: 'Test',
+      username: 'testuser'
+    };
+    console.log('%c⚠️ Используется тестовый пользователь:', 'color: #ffaa33; font-weight: bold', currentUser);
+    console.log('%c💡 Чтобы изменить ID, выполни в консоли: localStorage.setItem("testUserId", "123456")', 'color: #b8f548');
   }
 }
 
@@ -757,22 +770,31 @@ function initTelegram() {
 // ══════════════════════════════════════════════
 
 // The bot server URL — replace with your actual domain/IP
-const BOT_API = 'https://alone-above-bot-production.up.railway.app'; // Change to your API URL, e.g. 'https://your-domain.com'
-// fallback: try to auto-detect from Telegram initData
+const BOT_API = 'https://alone-above-bot-production.up.railway.app'; // Production API
 
 async function apiCall(endpoint, method = 'GET', body = null) {
   const headers = {
     'Content-Type': 'application/json',
-    // 'X-Telegram-Init-Data': tg?.initData || '',
   };
   try {
+    const url = BOT_API + endpoint;
+    console.log('%cAPI CALL:', 'color: #b8f548; font-weight: bold', method, url, body);
+    
     const opts = { method, headers };
     if (body) opts.body = JSON.stringify(body);
-    const r = await fetch(BOT_API + endpoint, opts);
-    if (!r.ok) throw new Error(r.status);
-    return await r.json();
+    
+    const r = await fetch(url, opts);
+    const data = await r.json();
+    
+    console.log('%cAPI RESPONSE:', 'color: #44dd88; font-weight: bold', endpoint, data);
+    
+    if (!r.ok) {
+      console.error('%cAPI ERROR:', 'color: #ff4466; font-weight: bold', r.status, data);
+      return null;
+    }
+    return data;
   } catch (e) {
-    console.error('API call failed:', endpoint, e);
+    console.error('%cAPI FETCH ERROR:', 'color: #ff4466; font-weight: bold', endpoint, e.message);
     return null;
   }
 }
@@ -1067,9 +1089,16 @@ function renderCart() {
 }
 
 async function syncCartWithServer() {
-  if (!currentUser) return;
+  if (!currentUser || !currentUser.id) {
+    console.warn('%c⚠️ Нет user ID для синхронизации корзины', 'color: #ffaa33; font-weight: bold');
+    return;
+  }
+  
+  console.log('%c🔄 Синхронизация корзины пользователя:', 'color: #b8f548; font-weight: bold', currentUser.id);
   const res = await apiCall('/cart/' + currentUser.id);
   const serverCart = res?.cart || [];
+  console.log('%c📦 Корзина с сервера:', 'color: #44dd88; font-weight: bold', serverCart);
+  
   if (serverCart && Array.isArray(serverCart)) {
     // merge server cart with local
     serverCart.forEach(sc => {
@@ -1123,9 +1152,11 @@ async function renderWishlist() {
   const content = document.getElementById('wish-content');
   
   // Try sync with server
-  if (currentUser) {
+  if (currentUser && currentUser.id) {
+    console.log('%c💚 Загрузка избранного пользователя:', 'color: #b8f548; font-weight: bold', currentUser.id);
     const res = await apiCall('/wishlist/' + currentUser.id);
     const sw = res?.wishlist || [];
+    console.log('%c♥ Избранное с сервера:', 'color: #44dd88; font-weight: bold', sw);
     if (sw && Array.isArray(sw)) {
       state.wishlist = sw.map(w => ({ product_id: w.product_id, name: w.name || 'Товар', price: w.price || 0, image_url: w.card_file_id || null }));
       lsSet('wishlist', state.wishlist);
@@ -1179,6 +1210,7 @@ function updateHomeWishCount() {
 // ══════════════════════════════════════════════
 async function renderProfile() {
   const u = currentUser || tg?.initDataUnsafe?.user || {};
+  console.log('%c👤 Рендеринг профиля пользователя:', 'color: #b8f548; font-weight: bold', u);
   
   // Show TG user data immediately
   const nameEl = document.getElementById('profile-name');
@@ -1195,8 +1227,10 @@ async function renderProfile() {
 
   // Load server data
   if (u.id) {
+    console.log('%c📡 Загрузка данных профиля из API для user ID:', 'color: #44dd88; font-weight: bold', u.id);
     const res = await apiCall('/profile/' + u.id);
     const userData = res?.profile;
+    console.log('%c💾 Данные профиля с сервера:', 'color: #44dd88; font-weight: bold', userData);
     if (userData) {
       document.getElementById('profile-bonus').textContent = '🌿 ' + fmt(userData.bonus_balance || 0) + ' ₸ бонусов';
       document.getElementById('pstat-orders').textContent = userData.total_purchases || 0;
@@ -1353,6 +1387,25 @@ function showToast(msg, type = '') {
 // INIT
 // ══════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', async () => {
+  console.log('%c🚀 ПРИЛОЖЕНИЕ ЗАГРУЖАЕТСЯ', 'color: #b8f548; font-size: 16px; font-weight: bold');
+  
+  // Проверяем здоровье API
+  const healthCheck = await apiCall('/health');
+  if (healthCheck?.status === 'API is running') {
+    console.log('%c✅ API РАБОТАЕТ!', 'color: #44dd88; font-weight: bold', healthCheck);
+  } else {
+    console.warn('%c⚠️ API НЕ ДОСТУПНА ИЛИ НЕ ОТВЕЧАЕТ', 'color: #ffaa33; font-weight: bold');
+    showToast('⚠️ API не доступна. Проверьте сервер.', 'warning');
+  }
+  
+  // Проверяем debug информацию
+  const debugInfo = await apiCall('/debug');
+  console.log('%c📊 DEBUG INFO:', 'color: #b8f548; font-weight: bold', debugInfo);
+  if (!debugInfo?.categories_count || debugInfo.categories_count === 0) {
+    console.error('%c❌ В БД НЕТ КАТЕГОРИЙ!', 'color: #ff4466; font-weight: bold');
+    console.warn('%c⚠️ Нужно добавить товары и категории в БД', 'color: #ffaa33; font-weight: bold');
+  }
+  
   initTelegram();
   
   // Close modal on overlay click
