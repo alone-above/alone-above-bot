@@ -751,25 +751,28 @@ async def cb_weborder_confirm(cb: types.CallbackQuery, bot: Bot):
         await cb.answer("Нет доступа", show_alert=True)
         return
     
-    order_id = int(cb.data.split("_")[-1])
-    
     try:
-        order = await __import__("db.orders", fromlist=["get_order"]).get_order(order_id)
+        order_id = int(cb.data.split("_")[-1])
+        
+        from db.orders import get_order, set_order_status
+        from db.users import add_bonus
+        
+        order = await get_order(order_id)
         if not order:
             await cb.answer("Заказ не найден", show_alert=True)
             return
         
-        # Update order status
+        # Update order status to processing
         await set_order_status(order_id, "processing", cb.from_user.id)
         
-        # Add purchase to user profile (if needed)
-        try:
-            user_id = order.get("user_id")
-            if user_id:
-                await __import__("db.users", fromlist=["add_purchase"]).add_purchase(user_id, order.get("amount", 0))
-                await __import__("db.users", fromlist=["add_bonus"]).add_bonus(user_id, int(order.get("amount", 0) * 0.05))
-        except Exception:
-            pass
+        # Add bonus to user
+        user_id = order.get("user_id")
+        if user_id:
+            try:
+                amount = order.get("amount", 0)
+                await add_bonus(user_id, amount)
+            except Exception as e:
+                print(f"Ошибка при добавлении бонуса: {e}")
         
         await cb.answer("✅ Подтверждено")
         try:
@@ -781,6 +784,7 @@ async def cb_weborder_confirm(cb: types.CallbackQuery, bot: Bot):
             pass
             
     except Exception as e:
+        print(f"Ошибка при подтверждении заказа: {e}")
         await cb.answer(f"Ошибка: {str(e)[:50]}", show_alert=True)
 
 
@@ -790,10 +794,12 @@ async def cb_weborder_reject(cb: types.CallbackQuery, bot: Bot):
         await cb.answer("Нет доступа", show_alert=True)
         return
     
-    order_id = int(cb.data.split("_")[-1])
-    
     try:
-        order = await __import__("db.orders", fromlist=["get_order"]).get_order(order_id)
+        order_id = int(cb.data.split("_")[-1])
+        
+        from db.orders import get_order, set_order_status
+        
+        order = await get_order(order_id)
         if not order:
             await cb.answer("Заказ не найден", show_alert=True)
             return
@@ -811,4 +817,5 @@ async def cb_weborder_reject(cb: types.CallbackQuery, bot: Bot):
             pass
             
     except Exception as e:
+        print(f"Ошибка при отклонении заказа: {e}")
         await cb.answer(f"Ошибка: {str(e)[:50]}", show_alert=True)
