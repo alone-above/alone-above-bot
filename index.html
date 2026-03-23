@@ -757,13 +757,13 @@ function initTelegram() {
 // ══════════════════════════════════════════════
 
 // The bot server URL — replace with your actual domain/IP
-const BOT_API = 'https://alone-above-bot.up.railway.app/miniapp'; 
+const BOT_API = 'http://localhost:8000'; // Change to your API URL, e.g. 'https://your-domain.com'
 // fallback: try to auto-detect from Telegram initData
 
 async function apiCall(endpoint, method = 'GET', body = null) {
   const headers = {
     'Content-Type': 'application/json',
-    'X-Telegram-Init-Data': tg?.initData || '',
+    // 'X-Telegram-Init-Data': tg?.initData || '',
   };
   try {
     const opts = { method, headers };
@@ -772,6 +772,7 @@ async function apiCall(endpoint, method = 'GET', body = null) {
     if (!r.ok) throw new Error(r.status);
     return await r.json();
   } catch (e) {
+    console.error('API call failed:', endpoint, e);
     return null;
   }
 }
@@ -844,15 +845,10 @@ async function loadCategories() {
   const grid = document.getElementById('cat-grid');
   grid.innerHTML = '<div class="spinner"><div class="spin"></div></div>';
   
-  let cats = await apiCall('/categories');
+  let res = await apiCall('/categories');
+  let cats = res?.categories || [];
   
-  if (!cats || cats.length === 0) {
-    // Fallback: try direct DB via a simple fetch to the public Railway DB
-    // Since we can't directly connect to PG from browser, show placeholder categories
-    cats = state.categories.length ? state.categories : null;
-  }
-  
-  if (cats && cats.length > 0) {
+  if (cats.length > 0) {
     state.categories = cats;
     renderCatGrid(cats);
   } else {
@@ -900,8 +896,8 @@ async function openCategory(cid, name) {
   document.getElementById('catalog-detail-view').style.display = 'none';
   document.getElementById('prod-list').innerHTML = '<div class="spinner"><div class="spin"></div></div>';
   
-  let prods = await apiCall('/products?category_id=' + cid);
-  if (!prods) prods = [];
+  let res = await apiCall('/categories/' + cid + '/products');
+  let prods = res?.products || [];
   state.products = prods;
   renderProdList(prods);
 }
@@ -942,7 +938,8 @@ function renderProdList(prods) {
 async function openProduct(pid) {
   let prod = state.products.find(p => p.id == pid);
   if (!prod) {
-    prod = await apiCall('/product/' + pid);
+    let res = await apiCall('/products/' + pid);
+    prod = res?.product;
   }
   if (!prod) { showToast('Товар не найден', 'error'); return; }
   state.currentProduct = prod;
@@ -1071,13 +1068,14 @@ function renderCart() {
 
 async function syncCartWithServer() {
   if (!currentUser) return;
-  const serverCart = await apiCall('/cart');
+  const res = await apiCall('/cart/' + currentUser.id);
+  const serverCart = res?.cart || [];
   if (serverCart && Array.isArray(serverCart)) {
     // merge server cart with local
     serverCart.forEach(sc => {
       const key = `${sc.product_id}_${sc.size}`;
       if (!state.cart.some(c => c.key === key)) {
-        state.cart.push({ key, product_id: sc.product_id, name: sc.name || 'Товар', price: sc.price || 0, size: sc.size, image_url: sc.image_url || null });
+        state.cart.push({ key, product_id: sc.product_id, name: sc.name || 'Товар', price: sc.price || 0, size: sc.size, image_url: sc.card_file_id || null });
       }
     });
     lsSet('cart', state.cart);
@@ -1126,9 +1124,10 @@ async function renderWishlist() {
   
   // Try sync with server
   if (currentUser) {
-    const sw = await apiCall('/wishlist');
+    const res = await apiCall('/wishlist/' + currentUser.id);
+    const sw = res?.wishlist || [];
     if (sw && Array.isArray(sw)) {
-      state.wishlist = sw.map(w => ({ product_id: w.product_id, name: w.name || 'Товар', price: w.price || 0, image_url: w.image_url || null }));
+      state.wishlist = sw.map(w => ({ product_id: w.product_id, name: w.name || 'Товар', price: w.price || 0, image_url: w.card_file_id || null }));
       lsSet('wishlist', state.wishlist);
     }
   }
@@ -1195,14 +1194,17 @@ async function renderProfile() {
   }
 
   // Load server data
-  const userData = await apiCall('/user/me');
-  if (userData) {
-    document.getElementById('profile-bonus').textContent = '🌿 ' + fmt(userData.bonus_balance || 0) + ' ₸ бонусов';
-    document.getElementById('pstat-orders').textContent = userData.total_purchases || 0;
-    document.getElementById('pstat-spent').textContent = fmt(userData.total_spent || 0);
-    document.getElementById('pstat-bonus').textContent = fmt(userData.bonus_balance || 0);
-    document.getElementById('stat-orders').textContent = userData.total_purchases || 0;
-    document.getElementById('stat-bonus').textContent = fmt(userData.bonus_balance || 0) + ' ₸';
+  if (u.id) {
+    const res = await apiCall('/profile/' + u.id);
+    const userData = res?.profile;
+    if (userData) {
+      document.getElementById('profile-bonus').textContent = '🌿 ' + fmt(userData.bonus_balance || 0) + ' ₸ бонусов';
+      document.getElementById('pstat-orders').textContent = userData.total_purchases || 0;
+      document.getElementById('pstat-spent').textContent = fmt(userData.total_spent || 0);
+      document.getElementById('pstat-bonus').textContent = fmt(userData.bonus_balance || 0);
+      document.getElementById('stat-orders').textContent = userData.total_purchases || 0;
+      document.getElementById('stat-bonus').textContent = fmt(userData.bonus_balance || 0) + ' ₸';
+    }
   }
 }
 
@@ -1322,8 +1324,8 @@ function updateHomeStats() {
 // SUPPORT
 // ══════════════════════════════════════════════
 async function loadSupportLinks() {
-  const settings = await apiCall('/settings');
-  const support = (settings && settings.support_username) || '@support';
+  const res = await apiCall('/support');
+  const support = res?.username || '@support';
   document.getElementById('support-manager-link').href = `https://t.me/${support.replace('@','')}`;
   document.getElementById('support-complaint-link').href = `https://t.me/${support.replace('@','')}`;
 }
@@ -1370,7 +1372,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Sync data from server
     if (currentUser) {
-      const ud = await apiCall('/user/me');
+      const res = await apiCall('/profile/' + currentUser.id);
+      const ud = res?.profile;
       if (ud) {
         userData = ud;
         document.getElementById('stat-orders').textContent = ud.total_purchases || 0;
