@@ -165,22 +165,22 @@
     background: var(--card); border: 1px solid var(--border);
     border-radius: var(--radius); overflow: hidden;
     cursor: pointer; transition: all 0.2s ease;
-    display: flex; align-items: center; gap: 14px; padding: 14px;
+    display: flex; flex-direction: column; gap: 12px; padding: 0;
   }
   .prod-card:active { border-color: var(--accent); transform: scale(0.99); }
   .prod-img {
-    width: 70px; height: 70px; border-radius: 12px;
+    width: 100%; height: 160px; border-radius: 0;
     background: var(--card2); flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
-    font-size: 28px; overflow: hidden;
+    font-size: 48px; overflow: hidden;
   }
   .prod-img img { width: 100%; height: 100%; object-fit: cover; }
-  .prod-info { flex: 1; min-width: 0; }
+  .prod-info { flex: 1; min-width: 0; padding: 0 14px; }
   .prod-name { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .prod-desc { font-size: 11px; color: var(--text2); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .prod-price { font-family: 'Bebas Neue', cursive; font-size: 20px; color: var(--accent); letter-spacing: 1px; margin-top: 6px; }
   .prod-stock { font-size: 10px; color: var(--text3); margin-top: 2px; }
-  .prod-actions { display: flex; gap: 8px; }
+  .prod-actions { display: flex; gap: 8px; padding: 0 14px 14px; }
   .btn-wish {
     width: 36px; height: 36px; border-radius: 10px;
     background: var(--card2); border: 1px solid var(--border);
@@ -821,6 +821,7 @@ let state = {
   orders: [],
   selectedSize: null,
   payMethod: 'kaspi',
+  profileRefreshInterval: null,
 };
 
 // ══════════════════════════════════════════════
@@ -867,6 +868,12 @@ function onPageEnter(page) {
     renderProfile();
   } else if (page === 'home') {
     updateHomeStats();
+  } else {
+    // Stop profile refresh when leaving profile page
+    if (state.profileRefreshInterval) {
+      clearInterval(state.profileRefreshInterval);
+      state.profileRefreshInterval = null;
+    }
   }
 }
 
@@ -1175,13 +1182,13 @@ async function toggleWish(pid, btn) {
     state.wishlist.splice(idx, 1);
     if (btn) btn.classList.remove('active');
     showToast('Убрано из избранного');
-    apiCall('/wishlist/remove', 'POST', { product_id: pid });
+    apiCall('/wishlist/remove', 'POST', { product_id: pid, user_id: currentUser?.id || 999999 });
   } else {
     const p = state.products.find(x => x.id == pid) || state.currentProduct;
     state.wishlist.push({ product_id: pid, name: p?.name || 'Товар', price: p?.price || 0, image_url: p?.image_url || null });
     if (btn) btn.classList.add('active');
     showToast('♥ Добавлено в избранное', 'accent');
-    apiCall('/wishlist/add', 'POST', { product_id: pid });
+    apiCall('/wishlist/add', 'POST', { product_id: pid, user_id: currentUser?.id || 999999 });
   }
   lsSet('wishlist', state.wishlist);
   updateHomeWishCount();
@@ -1286,6 +1293,15 @@ async function renderProfile() {
       document.getElementById('stat-bonus').textContent = fmt(userData.bonus_balance || 0) + ' ₸';
     }
   }
+  
+  // Start auto-refresh of orders every 5 seconds
+  if (!state.profileRefreshInterval) {
+    state.profileRefreshInterval = setInterval(() => {
+      if (state.page === 'profile' && document.getElementById('orders-view').style.display !== 'none') {
+        loadOrders();
+      }
+    }, 5000);
+  }
 }
 
 function showOrders() {
@@ -1298,13 +1314,21 @@ function showOrders() {
 async function loadOrders() {
   const list = document.getElementById('orders-list');
   list.innerHTML = '<div class="spinner"><div class="spin"></div></div>';
-  const orders = await apiCall('/orders');
-  if (!orders || !orders.length) {
+  
+  const userId = currentUser?.id || 999999;
+  console.log('%c📦 Загрузка заказов для user_id:', 'color: #b8f548; font-weight: bold', userId);
+  
+  const orders = await apiCall('/orders/' + userId);
+  const orderList = orders?.orders || [];
+  
+  console.log('%c📋 Полученные заказы:', 'color: #44dd88; font-weight: bold', orderList);
+  
+  if (!orderList || !orderList.length) {
     list.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="2"/></svg><h3>ЗАКАЗОВ НЕТ</h3><p>Ваши заказы появятся здесь</p></div>`;
     return;
   }
   const statusLabels = { processing: 'В обработке', china: 'Едет из Китая', arrived: 'Прибыло', delivered: 'Передано', confirmed: 'Получено' };
-  list.innerHTML = orders.map(o => `
+  list.innerHTML = orderList.map(o => `
     <div class="order-card">
       <div class="order-header">
         <div><div class="order-id">#${o.id}</div><div class="order-date">${formatDate(o.created_at)}</div></div>
