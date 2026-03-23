@@ -182,27 +182,27 @@ class OrderRequest(BaseModel):
     address: str
     promo_code: str = ""
     method: str = "kaspi"
+    user_id: int = None  # Реальный Telegram user ID
 
 @app.post("/order/create")
 async def create_order_handler(order: OrderRequest):
     """
-    Создание заказа из корзины и отправка уведомления менеджеру
+    Создание заказа из корзины и отправка уведомления менеджеру с inline кнопками
     """
     try:
         if not order.items:
             return {"success": False, "error": "Корзина пуста"}
         
+        # Используем реальный user_id из Telegram или fallback
+        user_id = order.user_id or 999999
+        
         # Для простоты берём первый товар из корзины
-        # В реальной системе нужно создать заказ для каждого товара
         first_item = order.items[0]
         product = await get_product(first_item.product_id)
         
         if not product:
             return {"success": False, "error": "Товар не найден"}
         
-        # ID пользователя - для миниапа используем фиксированный ID
-        # В реальной системе получать от Telegram через WebApp initData
-        user_id = 999999  # Placeholder
         user = await get_user(user_id)
         
         # Создаём пользователя если не существует
@@ -238,21 +238,38 @@ async def create_order_handler(order: OrderRequest):
                 "error": "Ошибка при создании заказа"
             }
         
-        # Формируем уведомление менеджеру
+        # Формируем уведомление менеджеру с inline кнопками
         pname = product.get("name", "Товар")
         notif = (
             f"🔔 <b>Новый заказ #{order_id} (WebApp Kaspi)</b>\n\n"
-            f"👤 WebApp User (ID: {user_id})\n"
-            f"📦 {pname} ({first_item.size})\n"
-            f"💰 {price} ₸\n"
-            f"📞 {order.phone}\n"
-            f"📍 {order.address}\n\n"
+            f"👤 <b>User ID:</b> <code>{user_id}</code>\n"
+            f"📦 <b>Товар:</b> {pname} ({first_item.size})\n"
+            f"💰 <b>Сумма:</b> {price} ₸\n"
+            f"📞 <b>Телефон:</b> {order.phone}\n"
+            f"📍 <b>Адрес:</b> {order.address}\n\n"
             f"<blockquote>⏳ Ожидается оплата через Kaspi</blockquote>"
+        )
+        
+        # Создаём inline кнопки для менеджера
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        
+        manager_buttons = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="✅ Подтвердить оплату", callback_data=f"weborder_confirm_{order_id}"),
+                    InlineKeyboardButton(text="❌ Отклонить", callback_data=f"weborder_reject_{order_id}"),
+                ]
+            ]
         )
         
         # Отправляем уведомление менеджеру
         try:
-            await bot_instance.send_message(MANAGER_ID, notif, parse_mode="HTML")
+            await bot_instance.send_message(
+                MANAGER_ID, 
+                notif, 
+                parse_mode="HTML",
+                reply_markup=manager_buttons
+            )
             print(f"✅ Уведомление отправлено менеджеру (заказ #{order_id})")
         except Exception as e:
             print(f"❌ Ошибка отправки уведомления менеджеру: {e}")
