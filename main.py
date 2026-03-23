@@ -16,6 +16,8 @@ from config import (
 )
 from db import init_db, close_pool
 from handlers import setup_routers
+import uvicorn
+from api import app
 
 
 async def main():
@@ -27,7 +29,7 @@ async def main():
 
     print("\033[35m" + "═" * 58)
     print("  🛍  SHOPBOT — Шымкент, Казахстан")
-    print("  🗄  PostgreSQL (asyncpg) + aiogram 3.x")
+    print("  🗄  PostgreSQL (asyncpg) + aiogram 3.x + FastAPI")
     print("═" * 58 + "\033[0m")
     print(f"  💱 Курс USD/KZT : {USD_KZT_RATE} (фикс.)")
     print(f"  🎁 Кэшбэк       : {CASHBACK_PERCENT}%")
@@ -44,10 +46,18 @@ async def main():
 
     setup_routers(dp)
 
-    print("\033[32m  🚀 Бот запущен!\033[0m\n")
+    # Настраиваем сервер FastAPI
+    config = uvicorn.Config(app, host="0.0.0.0", port=8000, log_level="info")
+    server = uvicorn.Server(config)
+
+    print("\033[32m  🚀 Бот и API запущены!\033[0m\n")
 
     try:
-        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+        # Запускаем бота и API одновременно
+        await asyncio.gather(
+            dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types()),
+            server.serve()
+        )
     finally:
         await close_pool()
         await bot.session.close()
