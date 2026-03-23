@@ -829,13 +829,20 @@ let state = {
 let pageHistory = ['home'];
 
 function navTo(page) {
+  console.log('%c🔀 navTo() вызвана с page:', 'color: #b8f548; font-weight: bold', page);
+  
   const pages = document.querySelectorAll('.page');
   pages.forEach(p => p.classList.remove('active'));
+  
   const target = document.getElementById('page-' + page);
   if (target) {
     target.classList.add('active');
     document.getElementById('pages').scrollTop = 0;
+    console.log('%c✅ Страница активирована:', 'color: #44dd88; font-weight: bold', 'page-' + page);
+  } else {
+    console.error('%c❌ Страница не найдена:', 'color: #ff4466; font-weight: bold', 'page-' + page);
   }
+  
   document.querySelectorAll('.nav-item').forEach(n => {
     n.classList.toggle('active', n.dataset.page === page);
   });
@@ -845,7 +852,10 @@ function navTo(page) {
 }
 
 function onPageEnter(page) {
+  console.log('%c📄 onPageEnter() вызвана для страницы:', 'color: #b8f548; font-weight: bold', page);
+  
   if (page === 'catalog') {
+    console.log('%c📂 Переходим в каталог, вызываем showCatList() и loadCategories()', 'color: #44dd88; font-weight: bold');
     showCatList();
     loadCategories();
   } else if (page === 'cart') {
@@ -864,16 +874,28 @@ function onPageEnter(page) {
 // CATEGORIES & PRODUCTS
 // ══════════════════════════════════════════════
 async function loadCategories() {
+  console.log('%c📂 loadCategories() вызвана', 'color: #b8f548; font-weight: bold');
+  
   const grid = document.getElementById('cat-grid');
+  if (!grid) {
+    console.error('%c❌ Ошибка! Element с ID "cat-grid" не найден!', 'color: #ff4466; font-weight: bold');
+    return;
+  }
+  
   grid.innerHTML = '<div class="spinner"><div class="spin"></div></div>';
   
   let res = await apiCall('/categories');
+  console.log('%c📦 Ответ от API /categories:', 'color: #44dd88; font-weight: bold', res);
+  
   let cats = res?.categories || [];
+  console.log('%c📊 Количество категорий:', 'color: #44dd88; font-weight: bold', cats.length);
   
   if (cats.length > 0) {
+    console.log('%c✅ Категории найдены! Рендеринг...', 'color: #44dd88; font-weight: bold', cats);
     state.categories = cats;
     renderCatGrid(cats);
   } else {
+    console.warn('%c⚠️ Категории пусты!', 'color: #ffaa33; font-weight: bold');
     grid.innerHTML = `<div class="empty-state" style="grid-column:span 2;padding:40px 0;">
       <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
       <h3>КАТАЛОГ ПУСТ</h3><p>Товары скоро появятся</p></div>`;
@@ -895,18 +917,30 @@ function getCatIcon(name, idx) {
 }
 
 function renderCatGrid(cats) {
+  console.log('%c🎨 renderCatGrid() вызвана с категориями:', 'color: #b8f548; font-weight: bold', cats);
+  
   const grid = document.getElementById('cat-grid');
+  if (!grid) {
+    console.error('%c❌ Ошибка! Element с ID "cat-grid" не найден!', 'color: #ff4466; font-weight: bold');
+    return;
+  }
+  
   if (!cats.length) {
+    console.warn('%c⚠️ Список категорий пуст', 'color: #ffaa33; font-weight: bold');
     grid.innerHTML = `<div class="empty-state" style="grid-column:span 2"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg><h3>ПУСТО</h3><p>Категории не найдены</p></div>`;
     return;
   }
-  grid.innerHTML = cats.map((c, i) => `
+  
+  const html = cats.map((c, i) => `
     <div class="cat-card" onclick="openCategory(${c.id}, '${escHtml(c.name)}')">
       <div class="cat-icon">${getCatIcon(c.name, i)}</div>
       <div class="cat-name">${escHtml(c.name)}</div>
       <div class="cat-count">${c.product_count !== undefined ? c.product_count + ' товаров' : ''}</div>
     </div>
   `).join('');
+  
+  console.log('%c✅ HTML для категорий сгенерирован, вставляю в DOM', 'color: #44dd88; font-weight: bold');
+  grid.innerHTML = html;
 }
 
 async function openCategory(cid, name) {
@@ -925,9 +959,21 @@ async function openCategory(cid, name) {
 }
 
 function showCatList() {
-  document.getElementById('catalog-categories-view').style.display = 'block';
-  document.getElementById('catalog-products-view').style.display = 'none';
-  document.getElementById('catalog-detail-view').style.display = 'none';
+  console.log('%c📂 showCatList() вызвана', 'color: #b8f548; font-weight: bold');
+  
+  const catView = document.getElementById('catalog-categories-view');
+  const prodView = document.getElementById('catalog-products-view');
+  const detailView = document.getElementById('catalog-detail-view');
+  
+  if (!catView) console.error('%c❌ Element "catalog-categories-view" не найден!', 'color: #ff4466; font-weight: bold');
+  if (!prodView) console.error('%c❌ Element "catalog-products-view" не найден!', 'color: #ff4466; font-weight: bold');
+  if (!detailView) console.error('%c❌ Element "catalog-detail-view" не найден!', 'color: #ff4466; font-weight: bold');
+  
+  if (catView) catView.style.display = 'block';
+  if (prodView) prodView.style.display = 'none';
+  if (detailView) detailView.style.display = 'none';
+  
+  console.log('%c✅ showCatList() завершена', 'color: #44dd88; font-weight: bold');
 }
 
 function renderProdList(prods) {
@@ -1313,6 +1359,9 @@ async function placeOrder() {
   btn.disabled = true;
   btn.textContent = 'ОФОРМЛЯЕМ...';
 
+  console.log('%c📦 placeOrder() - Отправляем заказ на сервер', 'color: #b8f548; font-weight: bold');
+  console.log('%c📋 Товары:', 'color: #44dd88; font-weight: bold', state.cart);
+  
   const result = await apiCall('/order/create', 'POST', {
     items: state.cart.map(c => ({ product_id: c.product_id, size: c.size })),
     phone, address, promo_code: promo, method: state.payMethod,
@@ -1321,19 +1370,97 @@ async function placeOrder() {
   btn.disabled = false;
   btn.textContent = 'ОФОРМИТЬ';
 
+  console.log('%c✅ Ответ сервера:', 'color: #44dd88; font-weight: bold', result);
+
   if (result && result.success) {
+    const orderId = result.order_id;
+    const paymentInfo = result.payment_info;
+    
+    console.log('%c🎉 Заказ успешно создан:', 'color: #44dd88; font-weight: bold', orderId);
+    
+    // Показываем информацию об оплате
     closeCheckout();
+    
+    // Показываем модальное окно с информацией об оплате
+    const paymentModal = document.createElement('div');
+    paymentModal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.8);
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    `;
+    
+    paymentModal.innerHTML = `
+      <div style="
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 24px;
+        max-width: 400px;
+        width: 100%;
+        text-align: center;
+      ">
+        <div style="font-size: 48px; margin-bottom: 16px;">🎉</div>
+        <h2 style="font-family: 'Bebas Neue', cursive; font-size: 28px; color: var(--accent); margin-bottom: 16px;">
+          ЗАКАЗ #${orderId}
+        </h2>
+        
+        <div style="background: var(--surface); border-radius: var(--radius-sm); padding: 16px; margin: 16px 0; text-align: left;">
+          <div style="font-size: 12px; color: var(--text2); text-transform: uppercase; margin-bottom: 8px;">💳 ОПЛАТА ЧЕРЕЗ KASPI</div>
+          <div style="font-family: 'Bebas Neue', cursive; font-size: 24px; color: var(--accent); margin: 8px 0;">
+            ${paymentInfo.phone}
+          </div>
+          <div style="font-size: 13px; color: var(--text); margin-top: 12px; line-height: 1.6;">
+            <strong>Сумма:</strong> ${paymentInfo.amount} ₸<br>
+            <strong>Описание:</strong> ${paymentInfo.description}
+          </div>
+        </div>
+        
+        <div style="background: var(--accent-dim); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; margin: 16px 0; font-size: 12px; line-height: 1.6;">
+          <strong>📝 Внимание:</strong> Менеджер проверит платёж и подтвердит заказ. При вопросах свяжитесь с менеджером.
+        </div>
+        
+        <button style="
+          width: 100%;
+          padding: 14px;
+          background: var(--accent);
+          border: none;
+          border-radius: var(--radius-sm);
+          color: #000;
+          font-family: 'Bebas Neue', cursive;
+          font-size: 16px;
+          cursor: pointer;
+          margin-top: 16px;
+        " onclick="this.parentElement.parentElement.remove()">
+          ЗАКРЫТЬ
+        </button>
+      </div>
+    `;
+    
+    document.body.appendChild(paymentModal);
+    
+    // Очищаем корзину
     state.cart = [];
     lsSet('cart', []);
     updateCartBadge();
     renderCart();
-    showToast('🎉 Заказ #' + result.order_id + ' оформлен!', 'accent');
+    
+    showToast(`✅ Заказ #${orderId} создан! Переведите ${paymentInfo.amount} ₸ на Kaspi`, 'accent');
   } else if (result && result.error) {
-    showToast(result.error, 'error');
+    console.error('%c❌ Ошибка сервера:', 'color: #ff4466; font-weight: bold', result.error);
+    showToast('❌ ' + result.error, 'error');
   } else {
-    // If API not available, show success anyway for demo
+    console.error('%c❌ Неизвестная ошибка при создании заказа', 'color: #ff4466; font-weight: bold');
+    // Fallback - показываем простое сообщение
     closeCheckout();
-    showToast('🎉 Заказ оформлен! Ожидайте сообщения.', 'accent');
+    showToast('⚠️ Заказ отправлен менеджеру. Ожидайте подтверждения.', 'warning');
     state.cart = [];
     lsSet('cart', []);
     updateCartBadge();
