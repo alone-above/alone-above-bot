@@ -10,7 +10,7 @@ from datetime import datetime
 from db.catalog import get_categories, get_products, get_product
 from db.cart import cart_get, wish_get
 from db.users import get_user
-from db.orders import create_order
+from db.orders import create_order, get_user_orders
 from config import SHOP_NAME, SUPPORT_USERNAME, KASPI_PHONE, MANAGER_ID
 from aiogram import Bot
 from db.pool import db_run
@@ -134,6 +134,32 @@ async def get_user_wishlist(user_id: int):
     try:
         wishlist = await wish_get(user_id)
         return {"wishlist": wishlist}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/wishlist/add")
+async def add_to_wishlist(req: dict):
+    try:
+        from db.cart import wish_add
+        user_id = req.get("user_id", 999999)
+        product_id = req.get("product_id")
+        if not product_id:
+            raise HTTPException(status_code=400, detail="product_id required")
+        result = await wish_add(user_id, product_id)
+        return {"success": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/wishlist/remove")
+async def remove_from_wishlist(req: dict):
+    try:
+        from db.cart import wish_remove
+        user_id = req.get("user_id", 999999)
+        product_id = req.get("product_id")
+        if not product_id:
+            raise HTTPException(status_code=400, detail="product_id required")
+        await wish_remove(user_id, product_id)
+        return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -296,3 +322,44 @@ async def create_order_handler(order: OrderRequest):
             "success": False,
             "error": f"Ошибка сервера: {str(e)}"
         }
+
+# Заказы пользователя
+@app.get("/orders")
+async def get_orders_for_current_user(user_id: int = None):
+    """
+    Получить заказы пользователя (требует user_id в query параметре или заголовке)
+    """
+    try:
+        if user_id is None:
+            # Пробуем получить из куки или заголовка (если будет реализовано)
+            return {"orders": []}
+        
+        orders = await get_user_orders(user_id)
+        return {"orders": orders or []}
+    except Exception as e:
+        return {"orders": []}
+
+@app.get("/orders/{user_id}")
+async def get_user_orders_endpoint(user_id: int):
+    """
+    Получить все заказы пользователя по его ID
+    """
+    try:
+        orders = await get_user_orders(user_id)
+        
+        # Форматируем заказы для фронтенда
+        formatted_orders = []
+        for order in orders:
+            formatted_orders.append({
+                "id": order.get("id"),
+                "created_at": order.get("created_at"),
+                "status": order.get("status"),
+                "pname": order.get("product_name"),
+                "size": order.get("size"),
+                "price": order.get("price"),
+            })
+        
+        return {"orders": formatted_orders}
+    except Exception as e:
+        print(f"❌ Ошибка при получении заказов: {e}")
+        return {"orders": []}
