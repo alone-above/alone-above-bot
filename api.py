@@ -3,13 +3,24 @@ api.py — FastAPI для мини-аппа
 """
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import asyncio
+from datetime import datetime
+
 from db.catalog import get_categories, get_products, get_product
 from db.cart import cart_get, wish_get
 from db.users import get_user
+from db.orders import create_order
 from config import SHOP_NAME, SUPPORT_USERNAME, KASPI_PHONE, MANAGER_ID
+from aiogram import Bot
+from db.pool import db_run
+from datetime import datetime
 
 app = FastAPI(title="ShopBot API", description="API для мини-аппа магазина")
+
+# Инициализируем бота для отправки уведомлений менеджеру
+from config import BOT_TOKEN
+bot_instance = Bot(token=BOT_TOKEN)
 
 # CORS для веб-приложения
 app.add_middleware(
@@ -156,3 +167,115 @@ async def get_support_info():
         "username": SUPPORT_USERNAME,
         "phone": KASPI_PHONE
     }
+
+# ══════════════════════════════════════════════
+# ЗАКАЗЫ
+# ══════════════════════════════════════════════
+
+class OrderItem(BaseModel):
+    product_id: int
+    size: str
+
+class OrderRequest(BaseModel):
+    items: list[OrderItem]
+    phone: str
+    address: str
+    promo_code: str = ""
+    method: str = "kaspi"
+
+@app.post("/order/create")
+async def create_order_handler(order: OrderRequest):
+    """
+    Создание заказа из корзины и отправка уведомления менеджеру
+    """
+    try:
+        if not order.items:
+            return {"success": False, "error": "Корзина пуста"}
+        
+        # Для простоты берём первый товар из корзины
+        # В реальной системе нужно создать заказ для каждого товара
+        first_item = order.items[0]
+        product = await get_product(first_item.product_id)
+        
+        if not product:
+            return {"success": False, "error": "Товар не найден"}
+        
+        # ID пользователя - для миниапа используем фиксированный ID
+        # В реальной системе получать от Telegram через WebApp initData
+        user_id = 999999  # Placeholder
+        user = await get_user(user_id)
+        
+        # Создаём пользователя если не существует
+        if not user:
+            await db_run(
+                """INSERT INTO users(user_id, username, first_name, registered_at)
+                   VALUES($1, $2, $3, $4)
+                   ON CONFLICT(user_id) DO UPDATE SET username=$2, first_name=$3""",
+                (user_id, "webappuser", "WebApp User", datetime.now().isoformat()),
+            )
+        
+        price = product.get("price", 0)
+        discount = 0
+        
+        # Создаём заказ
+        order_id = await create_order(
+            uid=user_id,
+            username="webappuser",
+            first_name="WebApp",
+            pid=first_item.product_id,
+            size=first_item.size,
+            price=price,
+            method=order.method,
+            phone=order.phone,
+            address=order.address,
+            promo_code=order.promo_code,
+            discount=discount,
+        )
+        
+        if not order_id:
+            return {
+                "success": False,
+                "error": "Ошибка при создании заказа"
+            }
+        
+        # Формируем уведомление менеджеру
+        pname = product.get("name", "Товар")
+        notif = (
+            f"🔔 <b>Новый заказ #{order_id} (WebApp Kaspi)</b>\n\n"
+            f"👤 WebApp User (ID: {user_id})\n"
+            f"📦 {pname} ({first_item.size})\n"
+            f"💰 {price} ₸\n"
+            f"📞 {order.phone}\n"
+            f"📍 {order.address}\n\n"
+            f"<blockquote>⏳ Ожидается оплата через Kaspi</blockquote>"
+        )
+        
+        # Отправляем уведомление менеджеру
+        try:
+            await bot_instance.send_message(MANAGER_ID, notif, parse_mode="HTML")
+            print(f"✅ Уведомление отправлено менеджеру (заказ #{order_id})")
+        except Exception as e:
+            print(f"❌ Ошибка отправки уведомления менеджеру: {e}")
+        
+        # Возвращаем информацию о платеже
+        return {
+            "success": True,
+            "order_id": order_id,
+            "payment_info": {
+                "method": "kaspi",
+                "phone": KASPI_PHONE,
+                "manager_contact": f"ID менеджера: {MANAGER_ID}",
+                "amount": price,
+                "description": f"Оплата заказа #{order_id}: {pname}"
+            },
+            "message": f"✅ Заказ #{order_id} создан! Переведите {price} ₸ на номер {KASPI_PHONE}"
+        }
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ Ошибка при создании заказа: {e}")
+        print(traceback.format_exc())
+        return {
+            "success": False,
+            "error": f"Ошибка сервера: {str(e)}"
+        }
